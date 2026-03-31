@@ -1,0 +1,32 @@
+@startuml
+title Кеширование списка заказов в MES
+
+actor "Оператор (UI)" as UI
+participant "Сервер MES" as MES
+participant "In-memory кеш\n(Redis/Memcached)" as CACHE
+database "База данных" as DB
+
+== Сценарий 1: Загрузка дашборда (чтение) ==
+
+UI -> MES: GET /api/orders?status=active&page=1
+MES -> CACHE: Получить данные по ключу\n"orders:active:page1"
+
+alt Данные найдены в кеше
+    CACHE --> MES: Возвращает кешированный ответ
+    MES --> UI: Возвращает данные (быстро)
+else Данных в кеше нет
+    MES -> DB: Выполнить SQL-запрос
+    DB --> MES: Результат запроса
+    MES -> CACHE: Сохранить результат с TTL\n(ключ "orders:active:page1")
+    MES --> UI: Возвращает данные
+end
+
+== Сценарий 2: Изменение статуса заказа (запись) ==
+
+UI -> MES: PATCH /api/orders/{id}\n(новый статус)
+MES -> DB: Обновить запись в БД
+DB --> MES: Подтверждение
+MES -> CACHE: Удалить все ключи, связанные\nсо списками заказов\n(например, "orders:*")
+MES --> UI: Подтверждение успешного обновления
+
+@enduml
